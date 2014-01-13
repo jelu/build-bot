@@ -1,0 +1,33 @@
+---
+CHECK_PULL_REQUESTS_INTERVAL: 30
+CHECK_PULL_REQUEST_INTERVAL: 60
+
+REVIEWER:
+  jelu: 1
+
+# GITHUB_USERNAME: username
+# GITHUB_TOKEN: token
+GITHUB_REPO:
+  SoftHSMv1:
+    jobs: softhsm
+  opendnssec-workflow-test:
+    jobs: opendnssec
+
+# JENKINS_USERNAME: username
+# JENKINS_TOKEN: token
+JENKINS_JOBS:
+  softhsm:
+    pull-fetch: 1
+    pull-fetch-build: 1
+    pull-build: 1
+  opendnssec:
+    pull-fetch: 1
+    pull-fetch-build: 1
+    pull-fetch-test: 1
+    pull-build-softhsm: 1
+    pull-build-ldns: 1
+    pull-build: 1
+    pull-test: 1
+
+# OPERATION_START: 06:00
+# OPERATION_END: 21:00

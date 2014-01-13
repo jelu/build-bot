@@ -1,0 +1,10 @@
+ORIGIN          Origin name
+ORIGIN_GIT      Origin Git URL
+ORIGIN_BRANCH   Origin branch
+
+PR              Pull request name
+PR_GIT          Pull request Git URL
+PR_BRANCH       Pull request branch
+
+CHILD_PROJECTS  Child projects to build on success
+SOFTWARE        The software to be built/tested (opendnssec/softhsm)

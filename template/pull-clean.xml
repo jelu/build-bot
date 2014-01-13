@@ -1,0 +1,54 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<matrix-project>
+  <actions/>
+  <description></description>
+  <logRotator class="hudson.tasks.LogRotator">
+    <daysToKeep>30</daysToKeep>
+    <numToKeep>100</numToKeep>
+    <artifactDaysToKeep>-1</artifactDaysToKeep>
+    <artifactNumToKeep>-1</artifactNumToKeep>
+  </logRotator>
+  <keepDependencies>false</keepDependencies>
+  <properties/>
+  <scm class="hudson.scm.NullSCM"/>
+  <canRoam>true</canRoam>
+  <disabled>false</disabled>
+  <blockBuildWhenDownstreamBuilding>true</blockBuildWhenDownstreamBuilding>
+  <blockBuildWhenUpstreamBuilding>true</blockBuildWhenUpstreamBuilding>
+  <triggers/>
+  <concurrentBuild>false</concurrentBuild>
+  <axes>
+    <hudson.matrix.LabelAxis>
+      <name>label</name>
+      <values>
+        <string>centos32-ods13</string>
+        <string>debian64-ods01</string>
+        <string>freebsd32-ods15</string>
+        <string>freebsd64-ods06</string>
+        <string>netbsd64-ods09</string>
+        <string>openbsd64-ods10</string>
+        <string>opensuse32-ods14</string>
+        <string>opensuse64-ods05</string>
+        <string>redhat64-ods08</string>
+        <string>sl64-ods04</string>
+        <string>solaris-ods07</string>
+        <string>suse64-ods11</string>
+        <string>ubuntu12-amd64-ods03</string>
+        <string>ubuntu32-ods12</string>
+        <string>ubuntu64-ods02</string>
+      </values>
+    </hudson.matrix.LabelAxis>
+  </axes>
+  <builders>
+    <hudson.tasks.Shell>
+      <command>INSTALL_TAG=&quot;pull-@PR@&quot; &amp;&amp;
+rm -rf $WORKSPACE/../../../$INSTALL_TAG-* 
+rm -rf $WORKSPACE/../../../root/$INSTALL_TAG</command>
+    </hudson.tasks.Shell>
+  </builders>
+  <publishers/>
+  <buildWrappers/>
+  <executionStrategy class="hudson.matrix.DefaultMatrixExecutionStrategyImpl">
+    <runSequentially>false</runSequentially>
+  </executionStrategy>
+</matrix-project>
