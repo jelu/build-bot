@@ -53,6 +53,7 @@ my $JSON = JSON::XS->new;
 my @watchers;
 my %pull_request;
 my %_GITHUB_CACHE;
+my %_GITHUB_CACHE_TS;
 tie %_GITHUB_CACHE, 'GDBM_File', 'github.db', &GDBM_WRCREAT, 0640;
 
 Getopt::Long::GetOptions(
@@ -173,6 +174,21 @@ push(@watchers,
 my $logger = Log::Log4perl->get_logger;
 $logger->info($0, ' starting');
 
+push(@watchers, AnyEvent->timer(
+    after => 300,
+    interval => 3600,
+    cb => sub {
+        $logger->info('Expiring GitHub cache');
+        my $time = time - $CFG{GITHUB_CACHE_EXPIRE};
+        foreach my $url (keys %_GITHUB_CACHE_TS) {
+            if ($_GITHUB_CACHE_TS{$url} < $time) {
+                delete $_GITHUB_CACHE{$url.':etag'};
+                delete $_GITHUB_CACHE{$url.':data'};
+                delete $_GITHUB_CACHE_TS{$url};
+            }
+        }
+    }));
+
 foreach my $repo (keys %{$CFG{GITHUB_REPO}}) {
     my $lock = 0;
     push(@watchers, AnyEvent->timer(
@@ -233,6 +249,7 @@ sub GitHubRequest {
     $args{headers}->{Authorization} = 'Basic '.MIME::Base64::encode($CFG{GITHUB_USERNAME}.':'.$CFG{GITHUB_TOKEN}, '');
     if ($method eq 'GET' and exists $_GITHUB_CACHE{$url.':etag'}) {
         $args{headers}->{'If-None-Match'} = $_GITHUB_CACHE{$url.':etag'};
+        $_GITHUB_CACHE_TS{$url} = time;
     }
     
     $logger->debug('GitHubRequest ', $method, ' https://api.github.com/'.$url);
@@ -255,6 +272,7 @@ sub GitHubRequest {
                 if ($method eq 'GET' and $header->{etag}) {
                     $_GITHUB_CACHE{$url.':etag'} = $header->{etag};
                     $_GITHUB_CACHE{$url.':data'} = $body;
+                    $_GITHUB_CACHE_TS{$url} = time;
                     $logger->debug('GitHubRequest ', 'https://api.github.com/'.$url, ' cached');
                 }
             }
