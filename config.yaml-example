@@ -10,24 +10,49 @@ REVIEWER:
 GITHUB_REPO:
   SoftHSMv1:
     jobs: softhsm
+    base: softhsm
   opendnssec-workflow-test:
     jobs: opendnssec
+    base: opendnssec-workflow-test
 
 # JENKINS_USERNAME: username
 # JENKINS_TOKEN: token
 JENKINS_JOBS:
   softhsm:
-    pull-fetch: 1
-    pull-fetch-build: 1
-    pull-build: 1
+    - name: pull-@PR@-fetch
+      template: pull-fetch
+      childs: pull-@PR@-fetch-build
+    - name: pull-@PR@-fetch-build
+      template: pull-fetch-build
+      childs: pull-@PR@-build
+    - name: pull-@PR@-build
+      template: pull-build
+      define:
+        SOFTWARE: softhsm
   opendnssec:
-    pull-fetch: 1
-    pull-fetch-build: 1
-    pull-fetch-test: 1
-    pull-build-softhsm: 1
-    pull-build-ldns: 1
-    pull-build: 1
-    pull-test: 1
+    - name: pull-@PR@-fetch
+      template: pull-fetch
+      childs: pull-@PR@-fetch-build, pull-@PR@-fetch-test
+    - name: pull-@PR@-fetch-build
+      template: pull-fetch-build
+      childs: pull-@PR@-build-softhsm
+    - name: pull-@PR@-fetch-test
+      template: pull-fetch-test
+    - name: pull-@PR@-build-softhsm
+      template: pull-build-softhsm
+      childs: pull-@PR@-build-ldns
+    - name: pull-@PR@-build-ldns
+      template: pull-build-ldns
+      childs: pull-@PR@-build
+    - name: pull-@PR@-build
+      template: pull-build
+      childs: pull-@PR@-test
+      define:
+        SOFTWARE: opendnssec
+    - name: pull-@PR@-test
+      template: pull-test
+      define:
+        SOFTWARE: opendnssec
 
 # OPERATION_START: 06:00
 # OPERATION_END: 21:00

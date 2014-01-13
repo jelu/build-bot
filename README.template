@@ -1,3 +1,5 @@
+BASE            The workspace to clone from when fetch source
+
 ORIGIN          Origin name
 ORIGIN_GIT      Origin Git URL
 ORIGIN_BRANCH   Origin branch
@@ -6,5 +8,8 @@ PR              Pull request name
 PR_GIT          Pull request Git URL
 PR_BRANCH       Pull request branch
 
-CHILD_PROJECTS  Child projects to build on success
+CHILDS          Child projects to build on success
+NO_CHILDS_START Marker for XML containing CHILDS that will be removed if no
+                childs are set
+NO_CHILDS_END   See NO_CHILDS_START
 SOFTWARE        The software to be built/tested (opendnssec/softhsm)

@@ -29,8 +29,9 @@
       <archiveMethod>TAR</archiveMethod>
       <overrideDefaultExcludes>false</overrideDefaultExcludes>
     </hudson.plugins.cloneworkspace.CloneWorkspacePublisher>
+@NO_CHILDS_START@
     <hudson.tasks.BuildTrigger>
-      <childProjects>@CHILD_PROJECTS@</childProjects>
+      <childProjects>@CHILDS@</childProjects>
       <threshold>
         <name>SUCCESS</name>
         <ordinal>0</ordinal>
@@ -38,6 +39,7 @@
         <completeBuild>true</completeBuild>
       </threshold>
     </hudson.tasks.BuildTrigger>
+@NO_CHILDS_END@
   </publishers>
   <buildWrappers/>
 </project>

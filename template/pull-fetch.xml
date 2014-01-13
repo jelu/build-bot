@@ -11,7 +11,7 @@
   <keepDependencies>false</keepDependencies>
   <properties/>
   <scm class="hudson.plugins.cloneworkspace.CloneWorkspaceSCM" plugin="clone-workspace-scm@0.6">
-    <parentJobName>base-@ORIGIN@</parentJobName>
+    <parentJobName>base-@BASE@</parentJobName>
     <criteria>Successful</criteria>
   </scm>
   <canRoam>true</canRoam>
@@ -68,8 +68,9 @@ git merge pr/@PR_BRANCH@
       <archiveMethod>TAR</archiveMethod>
       <overrideDefaultExcludes>false</overrideDefaultExcludes>
     </hudson.plugins.cloneworkspace.CloneWorkspacePublisher>
+@NO_CHILDS_START@
     <hudson.tasks.BuildTrigger>
-      <childProjects>@CHILD_PROJECTS@</childProjects>
+      <childProjects>@CHILDS@</childProjects>
       <threshold>
         <name>SUCCESS</name>
         <ordinal>0</ordinal>
@@ -77,6 +78,7 @@ git merge pr/@PR_BRANCH@
         <completeBuild>true</completeBuild>
       </threshold>
     </hudson.tasks.BuildTrigger>
+@NO_CHILDS_END@
   </publishers>
   <buildWrappers/>
 </project>

@@ -48,8 +48,9 @@
     </hudson.tasks.Shell>
   </builders>
   <publishers>
+@NO_CHILDS_START@
     <hudson.tasks.BuildTrigger>
-      <childProjects>pull-@PR@-build-ldns</childProjects>
+      <childProjects>@CHILDS@</childProjects>
       <threshold>
         <name>SUCCESS</name>
         <ordinal>0</ordinal>
@@ -57,6 +58,7 @@
         <completeBuild>true</completeBuild>
       </threshold>
     </hudson.tasks.BuildTrigger>
+@NO_CHILDS_END@
   </publishers>
   <buildWrappers/>
   <executionStrategy class="hudson.matrix.DefaultMatrixExecutionStrategyImpl">
