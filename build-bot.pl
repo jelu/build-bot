@@ -37,6 +37,7 @@ my %CFG = (
         # repo =>
         #   jobs =>
     },
+    GITHUB_CACHE_EXPIRE => 7200,
 
     # JENKINS_USERNAME
     # JENKINS_TOKEN
@@ -55,6 +56,10 @@ my %pull_request;
 my %_GITHUB_CACHE;
 my %_GITHUB_CACHE_TS;
 tie %_GITHUB_CACHE, 'GDBM_File', 'github.db', &GDBM_WRCREAT, 0640;
+foreach my $key (keys %_GITHUB_CACHE) {
+    $key =~ s/:(?:etag|data)$//o;
+    $_GITHUB_CACHE_TS{$key} = time;
+}
 
 Getopt::Long::GetOptions(
     'help|?' => \$help,
@@ -74,6 +79,7 @@ Pod::Usage::pod2usage(1) if $help;
         confess 'Unable to load config file ', $config, ': ', $@;
     }
     %CFG = ( %CFG, %$CFG );
+    VerifyCFG();
 }
 
 if (defined $log4perl and -f $log4perl) {
@@ -226,6 +232,43 @@ $logger->info($0, ' stopping');
 %pull_request = ();
 untie %_GITHUB_CACHE;
 exit(0);
+
+sub VerifyCFG {
+    foreach my $required (qw(
+CHECK_PULL_REQUESTS_INTERVAL
+CHECK_PULL_REQUEST_INTERVAL
+GITHUB_CACHE_EXPIRE))
+    {
+        unless (defined $CFG{$required} and $CFG{$required} =~ /^\d+$/o) {
+            confess 'Missing or not integer required configuration '.$required;
+        }
+    }
+
+    foreach my $required (qw(
+GITHUB_USERNAME
+GITHUB_TOKEN
+JENKINS_USERNAME
+JENKINS_TOKEN
+OPERATION_START
+OPERATION_END))
+    {
+        unless (defined $CFG{$required} and $CFG{$required}) {
+            confess 'Missing or empty required configuration '.$required;
+        }
+    }
+
+    foreach my $required (qw(
+REVIEWER
+GITHUB_REPO
+JENKINS_JOBS))
+    {
+        unless (defined $CFG{$required} and ref($CFG{$required}) eq 'HASH') {
+            confess 'Missing or not HASH for required configuration '.$required;
+        }
+    }
+    
+    # TODO: check more, verify hash deep
+}
 
 sub isWithinOperationHours {
     my $now = strftime('%H:%M', gmtime);
@@ -415,7 +458,9 @@ sub JenkinsRequest {
 sub ResolveDefines {
     my ($string, $define) = @_;
     
-    # TODO: verify args
+    unless (ref($define) eq 'HASH') {
+        confess '$define is not HASH';
+    }
     
     foreach my $key (keys %$define) {
         $string =~ s/\@$key\@/$define->{$key}/mg;
@@ -427,7 +472,12 @@ sub ResolveDefines {
 sub ReadTemplate {
     my ($template, $define) = @_;
     
-    # TODO: verify args
+    unless (-r $template) {
+        confess '$template is not a file or can not be read';
+    }
+    unless (ref($define) eq 'HASH') {
+        confess '$define is not HASH';
+    }
     
     local($/) = undef;
     local(*FILE);
@@ -662,10 +712,14 @@ sub CheckPullRequest_GetStatuses {
 
 sub CheckPullRequest_CheckJobs {
     my ($d) = @_;
-    # TODO: Check $CFG
+    
+    unless (exists $CFG{GITHUB_REPO}->{$d->{repo}}) {
+        confess 'GITHUB_REPO '.$d->{repo}.' not found';
+    }
+    unless (exists $CFG{JENKINS_JOBS}->{$CFG{GITHUB_REPO}->{$d->{repo}}->{jobs}}) {
+        confess 'JENKINS_JOBS '.$CFG{GITHUB_REPO}->{$d->{repo}}->{jobs}.' not found';
+    }
     my @jobs = @{$CFG{JENKINS_JOBS}->{$CFG{GITHUB_REPO}->{$d->{repo}}->{jobs}}};
-
-    # TODO: verify jobs
     
     my $code; $code = sub {
         my $job = shift(@jobs);

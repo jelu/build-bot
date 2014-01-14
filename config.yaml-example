@@ -14,7 +14,7 @@ GITHUB_REPO:
   opendnssec-workflow-test:
     jobs: opendnssec
     base: opendnssec-workflow-test
-GITHUB_CACHE_EXPIRE: 7200
+# GITHUB_CACHE_EXPIRE: 7200
 
 # JENKINS_USERNAME: username
 # JENKINS_TOKEN: token
