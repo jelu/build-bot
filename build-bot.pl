@@ -455,6 +455,34 @@ sub JenkinsRequest {
         };
 }
 
+sub VerifyJobData {
+    my ($data) = @_;
+    
+    unless (ref($data) eq 'HASH'
+        and ref($data->{lastBuild}) eq 'HASH'
+        and defined $data->{lastBuild}->{number}
+        and defined $data->{lastBuild}->{url})
+    {
+        return;
+    }
+    
+    return 1;
+}
+
+sub VerifyBuildData {
+    my ($data) = @_;
+    
+    unless (ref($data) eq 'HASH'
+        and defined $data->{number}
+        and defined $data->{result}
+        and ref($data->{actions}) eq 'ARRAY')
+    {
+        return;
+    }
+    
+    return 1;
+}
+
 sub ResolveDefines {
     my ($string, $define) = @_;
     
@@ -745,6 +773,8 @@ sub CheckPullRequest_CheckJobs {
         JenkinsRequest(
             'job/'.$name,
             sub {
+                my ($data) = @_;
+                
                 if ($@) {
                     if ($@ =~ /not found/io) {
                         undef $@;
@@ -778,19 +808,38 @@ sub CheckPullRequest_CheckJobs {
                     return;
                 }
                 
-                unless (ref($job) eq 'HASH') {
+                unless (VerifyJobData($data)) {
                     $@ = 'jenkins job response is invalid';
                     $d->{cb}->();
                     undef $code;
                     return;
                 }
                 
-                # TODO: check logic
-                # save this json
-                # request lastBuild->url
-                # save that json
-                
-                $code->();
+                JenkinsRequest(
+                    $data->{lastBuild}->{url},
+                    sub {
+                        my ($build_data) = @_;
+                        
+                        if ($@) {
+                            $@ = 'jenkins build request failed: '.$@;
+                            $d->{cb}->();
+                            undef $code;
+                            return;
+                        }
+                        
+                        unless (VerifyBuildData($build_data)) {
+                            $@ = 'jenkins build response is invalid';
+                            $d->{cb}->();
+                            undef $code;
+                            return;
+                        }
+                        
+                        $d->{job}->{$name} = {
+                            data => $data,
+                            build => $build_data
+                        };
+                        $code->();
+                    });
             });
     };
     $code->();
@@ -881,11 +930,15 @@ sub CheckPullRequest_UpdateStatus {
         return;
     }
     
-    # TODO:
-    # verify saved json from CheckJobs
-    # relate lastBuild json with upstreamProject and upstreamBuild
-    # check result == SUCCESS
-    # warn when upstreamBuild is > what we are checking for
+    if (ref($d->{job}) eq 'HASH') {
+        # TODO:
+        # relate lastBuild json with upstreamProject and upstreamBuild
+        # check result == SUCCESS
+        # warn when upstreamBuild is > what we are checking for
+    }
+    else {
+        # TODO: Error
+    }
     
     $d->{cb}->();
 }
