@@ -12,7 +12,6 @@ use AnyEvent::HTTP ();
 use Pod::Usage ();
 use Getopt::Long ();
 use Log::Log4perl ();
-use XML::LibXML ();
 use JSON::XS ();
 use POSIX;
 use YAML ();
@@ -235,6 +234,10 @@ $logger->info($0, ' stopping');
 untie %_GITHUB_CACHE;
 exit(0);
 
+#
+# Verify all the configuration in %CFG
+#
+
 sub VerifyCFG {
     foreach my $required (qw(
 CHECK_PULL_REQUESTS_INTERVAL
@@ -272,6 +275,10 @@ JENKINS_JOBS))
     # TODO: check more, verify hash deep
 }
 
+#
+# Return true if we are within operation hours
+#
+
 sub isWithinOperationHours {
     my $now = strftime('%H:%M', gmtime);
     
@@ -281,6 +288,10 @@ sub isWithinOperationHours {
     
     return;
 }
+
+#
+# Make a API request to GitHub
+#
 
 sub GitHubRequest {
     my $url = shift;
@@ -343,6 +354,10 @@ sub GitHubRequest {
         };
 }
 
+#
+# Verify the pull request response from GitHub
+#
+
 sub VerifyPullRequest {
     my ($pull) = @_;
     
@@ -373,7 +388,11 @@ sub VerifyPullRequest {
     return 1;
 }
 
-sub VerifyReviewComment {
+#
+# Verify comment response from GitHub
+#
+
+sub VerifyComment {
     my ($comment) = @_;
     
     unless (ref($comment) eq 'HASH'
@@ -387,6 +406,10 @@ sub VerifyReviewComment {
     
     return 1;
 }
+
+#
+# Verify commit response from GitHub
+#
 
 sub VerifyCommit {
     my ($commit) = @_;
@@ -402,6 +425,10 @@ sub VerifyCommit {
     
     return 1;
 }
+
+#
+# Verify status response from GitHub
+#
 
 sub VerifyStatus {
     my ($status) = @_;
@@ -419,6 +446,10 @@ sub VerifyStatus {
     
     return 1;
 }
+
+#
+# Make a API request to Jenkins
+#
 
 sub JenkinsRequest {
     my $url = shift;
@@ -475,6 +506,10 @@ sub JenkinsRequest {
         };
 }
 
+#
+# Verify job response from Jenkins
+#
+
 sub VerifyJobData {
     my ($data) = @_;
     
@@ -496,6 +531,10 @@ sub VerifyJobData {
     return 1;
 }
 
+#
+# Verify build response from Jenkins
+#
+
 sub VerifyBuildData {
     my ($data) = @_;
     
@@ -511,6 +550,10 @@ sub VerifyBuildData {
     return 1;
 }
 
+#
+# Verify cause response from Jenkins
+#
+
 sub VerifyCause {
     my ($cause) = @_;
     
@@ -523,6 +566,10 @@ sub VerifyCause {
     
     return 1;
 }
+
+#
+# Resolve defined values (@TOKEN@)in $string with the help from $define (hash ref)
+#
 
 sub ResolveDefines {
     my ($string, $define) = @_;
@@ -537,6 +584,10 @@ sub ResolveDefines {
     
     return $string;
 }
+
+#
+# Read a template file and resolve the defined values and return the result as a string
+#
 
 sub ReadTemplate {
     my ($template, $define) = @_;
@@ -563,6 +614,10 @@ sub ReadTemplate {
     
     return ResolveDefines($string, $define);
 }
+
+#
+# Check if we have new pull requests to monitor
+#
 
 sub CheckPullRequests {
     my ($repo, $cb) = @_;
@@ -605,6 +660,7 @@ sub CheckPullRequests {
                 {
                     my $pull = $pull;
                     my $lock = 0;
+                    # Define a state hash that will be given for each run of the timer
                     my $state = {
                         define => {
                             BASE => $CFG{GITHUB_REPO}->{$repo}->{base},
@@ -683,6 +739,10 @@ sub CheckPullRequests {
         });
 }
 
+#
+# Monitor a pull request for change and/or commands
+#
+
 sub CheckPullRequest {
     my ($d) = @_;
 
@@ -695,6 +755,10 @@ sub CheckPullRequest {
             CheckPullRequest_GetComments($d, @_);
         });
 }
+
+#
+# Get the comments for the pull request to look for bot commands
+#
 
 sub CheckPullRequest_GetComments {
     my ($d, $comments) = @_;
@@ -712,7 +776,7 @@ sub CheckPullRequest_GetComments {
     }
     
     foreach my $comment (@$comments) {
-        unless (VerifyReviewComment($comment)) {
+        unless (VerifyComment($comment)) {
             $@ = 'Comment not valid';
             $d->{cb}->();
             return;
@@ -746,6 +810,10 @@ sub CheckPullRequest_GetComments {
             CheckPullRequest_GetCommits($d, @_);
         });
 }
+
+#
+# Get a list of commits for the pull request to retrieve statuses from
+#
 
 sub CheckPullRequest_GetCommits {
     my ($d, $commits) = @_;
@@ -804,6 +872,10 @@ sub CheckPullRequest_GetCommits {
     };
     $code->();
 }
+
+#
+# Get the status for each commit in the pull request and determen what we have done so far
+#
 
 sub CheckPullRequest_GetStatuses {
     my ($d, $statuses) = @_;
@@ -895,6 +967,10 @@ sub CheckPullRequest_GetStatuses {
     $@ = 'Invalid status';
     $d->{cb}->();
 }
+
+#
+# Check all Jenkins jobs, create them if they don't exist otherwise get the latest build info
+#
 
 sub CheckPullRequest_CheckJobs {
     my ($d) = @_;
@@ -1041,6 +1117,10 @@ sub CheckPullRequest_CheckJobs {
     $code->();
 }
 
+#
+# Start a build if needed
+#
+
 sub CheckPullRequest_StartBuild {
     my ($d) = @_;
     
@@ -1137,6 +1217,10 @@ sub CheckPullRequest_StartBuild {
     
     CheckPullRequest_UpdateStatus($d);
 }
+
+#
+# Update the status of the pull request
+#
 
 sub CheckPullRequest_UpdateStatus {
     my ($d) = @_;
@@ -1272,6 +1356,10 @@ sub CheckPullRequest_UpdateStatus {
     $d->{cb}->();
 }
 
+#
+# Do the actual status update
+#
+
 sub CheckPullRequest_UpdateStatus2 {
     my ($d, $state, $target_url, $desc) = @_;
 
@@ -1293,6 +1381,10 @@ sub CheckPullRequest_UpdateStatus2 {
             description => $desc
         }));
 }
+
+#
+# Delete the workspace and jobs from Jenkins tied to the pull request
+#
 
 sub DeletePullRequest {
     my ($d) = @_;
