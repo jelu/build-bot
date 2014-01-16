@@ -1,6 +1,9 @@
 ---
 CHECK_PULL_REQUESTS_INTERVAL: 30
 CHECK_PULL_REQUEST_INTERVAL: 60
+CHECK_JENKINS_INTERVAL: 60
+
+TRY_DELETE_JOB: 10
 
 REVIEWER:
   jelu: 1
@@ -54,6 +57,7 @@ JENKINS_JOBS:
       template: pull-test
       define:
         SOFTWARE: opendnssec
+      testReport: 1
 
 # OPERATION_START: 06:00
 # OPERATION_END: 21:00

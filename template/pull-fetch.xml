@@ -37,12 +37,7 @@ GIT_ORIGIN_COMMIT=`git branch -rv | while read branch commit rest; do
     break;
   fi;
 done`
-GIT_PR_COMMIT=`git branch -rv | while read branch commit rest; do
-  if [ &quot;$branch&quot; = &quot;pr/@PR_BRANCH@&quot; ]; then
-    echo $commit;
-    break;
-  fi;
-done`
+GIT_PR_COMMIT="@LAST_COMMIT_SHA@"
 if [ -z &quot;$GIT_ORIGIN_COMMIT&quot; -o -z &quot;$GIT_PR_COMMIT&quot; ]; then
   exit 1
 fi
@@ -57,7 +52,7 @@ else
   git branch build origin/@ORIGIN_BRANCH@ &amp;&amp;
   git checkout build
 fi &amp;&amp;
-git merge pr/@PR_BRANCH@
+git merge $GIT_PR_COMMIT
 </command>
     </hudson.tasks.Shell>
   </builders>

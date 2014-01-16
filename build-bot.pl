@@ -53,6 +53,7 @@ my $JSON = JSON::XS->new;
 my @watchers;
 my %pull_request;
 my %delete_pull_request;
+my $jenkins_enabled = 0;
 my %_GITHUB_CACHE;
 my %_GITHUB_CACHE_TS;
 tie %_GITHUB_CACHE, 'GDBM_File', 'github.db', &GDBM_WRCREAT, 0640;
@@ -69,6 +70,9 @@ Getopt::Long::GetOptions(
     'config=s' => \$config
 ) or Pod::Usage::pod2usage(2);
 Pod::Usage::pod2usage(1) if $help;
+unless ($config) {
+    Pod::Usage::pod2usage(1);
+}
 
 {
     my $CFG;
@@ -195,6 +199,36 @@ push(@watchers, AnyEvent->timer(
         }
     }));
 
+{
+    my $lock;
+    push(@watchers, AnyEvent->timer(
+        after => 1,
+        interval => $CFG{CHECK_JENKINS_INTERVAL},
+        cb => sub {
+            if ($lock) {
+                $logger->info('CheckJenkins locked?');
+                return;
+            }
+            unless (isWithinOperationHours()) {
+                return;
+            }
+            
+            $lock = 1;
+            $logger->info('CheckJenkins start');
+            undef($@);
+            CheckJenkins(sub {
+                if ($@) {
+                    $logger->error('CheckJenkins ', $@);
+                    undef($@);
+                }
+                else {
+                    $logger->info('CheckJenkins finish');
+                }
+                $lock = 0;
+            });
+        }));
+}
+
 foreach my $repo (keys %{$CFG{GITHUB_REPO}}) {
     my $lock = 0;
     $delete_pull_request{$repo} = {};
@@ -242,6 +276,8 @@ sub VerifyCFG {
     foreach my $required (qw(
 CHECK_PULL_REQUESTS_INTERVAL
 CHECK_PULL_REQUEST_INTERVAL
+CHECK_JENKINS_INTERVAL
+TRY_DELETE_JOB
 GITHUB_CACHE_EXPIRE))
     {
         unless (defined $CFG{$required} and $CFG{$required} =~ /^\d+$/o) {
@@ -551,6 +587,23 @@ sub VerifyBuildData {
 }
 
 #
+# Verify test report response from Jenkins
+#
+
+sub VerifyTestReport {
+    my ($data) = @_;
+    
+    unless (ref($data) eq 'HASH'
+        and defined $data->{totalCount}
+        and exists $data->{failCount})
+    {
+        return;
+    }
+    
+    return 1;
+}
+
+#
 # Verify cause response from Jenkins
 #
 
@@ -639,7 +692,7 @@ sub CheckPullRequests {
                 $cb->();
                 return;
             }
-            
+
             my %have_pull;
             foreach my $pull (@$pulls) {
                 unless (VerifyPullRequest($pull)) {
@@ -684,9 +737,13 @@ sub CheckPullRequests {
                             unless (isWithinOperationHours()) {
                                 return;
                             }
+                            unless ($jenkins_enabled) {
+                                $logger->warn('CheckPullRequest ', $repo, ' ', $pull->{number}, ': Jenkins is disabled, will not do anything');
+                                return;
+                            }
                             
                             $lock = 1;
-                            if (exists $delete_pull_request{$repo}->{$pull->{number}}) {
+                            if (exists $delete_pull_request{$repo}->{$pull->{number}} and $state->{state} ne 'pending') {
                                 $logger->info('DeletePullRequest ', $repo, ' ', $pull->{number}, ' start');
                                 undef($@);
                                 DeletePullRequest({
@@ -696,6 +753,11 @@ sub CheckPullRequests {
                                         if ($@) {
                                             $logger->error('DeletePullRequest ', $repo, ' ', $pull->{number}, ' ', $@);
                                             undef($@);
+                                            if ($delete_pull_request{$repo}->{$pull->{number}} <= $CFG{TRY_DELETE_JOB}) {
+                                                $delete_pull_request{$repo}->{$pull->{number}}++;
+                                                $lock = 0;
+                                                return;
+                                            }
                                         }
                                         else {
                                             $logger->info('DeletePullRequest ', $repo, ' ', $pull->{number}, ' finish');
@@ -747,7 +809,7 @@ sub CheckPullRequest {
     my ($d) = @_;
 
     # TODO: remove _links depends
-    
+
     # Get comments
     GitHubRequest(
         $d->{pull}->{_links}->{comments}->{href},
@@ -830,6 +892,7 @@ sub CheckPullRequest_GetCommits {
         return;
     }
     
+    my $last_commit_at = '';
     foreach my $commit (@$commits) {
         unless (VerifyCommit($commit)) {
             $@ = 'Commit not valid';
@@ -841,11 +904,22 @@ sub CheckPullRequest_GetCommits {
             # There is a commit after or at the build command, log it
             $d->{commit_after_build} = 1;
         }
+        
+        if ($commit->{commit}->{author}->{date} > $last_commit_at) {
+            $d->{last_commit} = $commit;
+        }
+    }
+    
+    unless (defined $d->{last_commit}) {
+        $@ = 'no last commit?';
+        $d->{cb}->();
+        return;
     }
     
     # Get statuses for each commit
     my @href = split(/\//o, $d->{pull}->{_links}->{statuses}->{href});
     pop(@href);
+    $d->{last_commit_status} = join('/', @href, $d->{last_commit}->{sha});
     my @statuses;
     my $code; $code = sub {
         my $commit = shift(@$commits);
@@ -899,7 +973,7 @@ sub CheckPullRequest_GetStatuses {
             return;
         }
     }
-
+    
     my $status;
     foreach my $entry (sort {$b->{created_at} cmp $a->{created_at}} @$statuses) {
         if ($entry->{creator}->{login} eq $CFG{GITHUB_USERNAME}) {
@@ -916,7 +990,10 @@ sub CheckPullRequest_GetStatuses {
             return;
         }
         $d->{build} = 1;
-        $d->{status} = $d->{pull}->{statuses_url};
+        $d->{status} = $d->{last_commit_status};
+        unless (defined $d->{state}->{state}) {
+            $d->{state}->{state} = 'pending';
+        }
         CheckPullRequest_CheckJobs($d);
         return;
     }
@@ -931,6 +1008,9 @@ sub CheckPullRequest_GetStatuses {
             }
             $d->{build} = 0;
             $d->{status} = $status->{url};
+            unless (defined $d->{state}->{state}) {
+                $d->{state}->{state} = 'pending';
+            }
             CheckPullRequest_CheckJobs($d);
             return;
         }
@@ -941,12 +1021,17 @@ sub CheckPullRequest_GetStatuses {
     {
         if ($status->{description} =~ /^\s*Build\s+(\d+)\s+(?:successful|failed)/o) {
             $d->{build_number} = $1;
+            my $state = $2;
             if ($d->{build_number} < 1) {
                 $@ = 'Invalid build number from status';
                 $d->{cb}->();
                 return;
             }
             
+            unless (defined $d->{state}->{state}) {
+                $d->{state}->{state} = $state eq 'successful' ? 'success' : 'failure';
+            }
+
             if ($d->{build_at} ge $status->{created_at}) {
                 if ($d->{commit_after_build}) {
                     $logger->info('Commit after build command for ', $d->{repo}, ' number ', $d->{pull}->{number});
@@ -954,7 +1039,7 @@ sub CheckPullRequest_GetStatuses {
                     return;
                 }
                 $d->{build} = 1;
-                $d->{status} = $d->{pull}->{statuses_url};
+                $d->{status} = $d->{last_commit_status};
                 CheckPullRequest_CheckJobs($d);
                 return;
             }
@@ -994,7 +1079,8 @@ sub CheckPullRequest_CheckJobs {
         }
         my $define = {
             %{$d->{state}->{define}},
-            (exists $job->{define} ? (%{$job->{define}}) : ())
+            (exists $job->{define} ? (%{$job->{define}}) : ()),
+            LAST_COMMIT_SHA => $d->{last_commit}->{sha}
         };
         if (exists $job->{childs}) {
             $define->{CHILDS} = ResolveDefines($job->{childs}, $define);
@@ -1003,6 +1089,8 @@ sub CheckPullRequest_CheckJobs {
         
         unless (exists $d->{build_job}) {
             $d->{build_job} = $name;
+            $d->{build_job_define} = $define;
+            $d->{build_job_template} = $job->{template};
         }
         
         # Check if job exists and status, create if not
@@ -1056,7 +1144,8 @@ sub CheckPullRequest_CheckJobs {
                     $d->{job}->{$name} = {
                         childs => $define->{CHILDS},
                         data => $data,
-                        build => undef
+                        build => undef,
+                        test => undef
                     };
                     $code->();
                     return;
@@ -1081,12 +1170,44 @@ sub CheckPullRequest_CheckJobs {
                             return;
                         }
                         
-                        $d->{job}->{$name} = {
-                            childs => $define->{CHILDS},
-                            data => $data,
-                            build => $build_data
-                        };
-                        $code->();
+                        unless (defined $job->{testReport} and $job->{testReport}) {
+                            $d->{job}->{$name} = {
+                                childs => $define->{CHILDS},
+                                data => $data,
+                                build => $build_data,
+                                test => undef
+                            };
+                            $code->();
+                            return;
+                        }
+
+                        JenkinsRequest(
+                            $data->{lastBuild}->{url}.'testReport',
+                            sub {
+                                my ($test_report) = @_;
+                                
+                                if ($@) {
+                                    $@ = 'jenkins test report request failed: '.$@;
+                                    $d->{cb}->();
+                                    undef $code;
+                                    return;
+                                }
+                                
+                                unless (VerifyTestReport($test_report)) {
+                                    $@ = 'jenkins test report response is invalid';
+                                    $d->{cb}->();
+                                    undef $code;
+                                    return;
+                                }
+                                
+                                $d->{job}->{$name} = {
+                                    childs => $define->{CHILDS},
+                                    data => $data,
+                                    build => $build_data,
+                                    test => $test_report
+                                };
+                                $code->();
+                            });
 
 #                        JenkinsRequest(
 #                            $data->{lastBuild}->{url}.'consoleText',
@@ -1123,7 +1244,7 @@ sub CheckPullRequest_CheckJobs {
 
 sub CheckPullRequest_StartBuild {
     my ($d) = @_;
-    
+
     if ($d->{build}) {
         unless ($d->{build_job}) {
             $@ = 'start job failed: dont know which';
@@ -1167,51 +1288,70 @@ sub CheckPullRequest_StartBuild {
                 return;
             }
         }
-        
+
+        # Update job with last commit sha
         JenkinsRequest(
-            'job/'.$d->{build_job}.'/build?delay=0sec',
+            'job/'.$d->{build_job}.'/config.xml',
             sub {
-                my (undef, $header) = @_;
-                
                 if ($@) {
-                    $@ = 'jenkins start job failed: '.$@;
+                    $@ = 'jenkins update build job failed: '.$@;
                     $d->{cb}->();
                     return;
                 }
                 
-                my $w; $w = AnyEvent->timer(
-                    after => 1,
-                    cb => sub {
-                        JenkinsRequest(
-                            $header->{location},
-                            sub {
-                                my ($job) = @_;
-        
-                                if ($@) {
-                                    $@ = 'jenkins start job failed (queue): '.$@;
-                                    $d->{cb}->();
-                                    return;
-                                }
-                                
-                                unless (ref($job) eq 'HASH'
-                                    and ref($job->{executable}) eq 'HASH'
-                                    and defined $job->{executable}->{number}
-                                    and defined $job->{executable}->{url})
-                                {
-                                    $@ = 'jenkins start job request invalid (queue)';
-                                    $d->{cb}->();
-                                    return;
-                                }
-                                
-                                $d->{build_number} = $job->{executable}->{number};
-                                $d->{build_url} = $job->{executable}->{url};
-                                $logger->info('Started jenkins job ', $d->{build_job}, ' number ', $d->{build_number});
-                                CheckPullRequest_UpdateStatus($d);
+                $logger->info('Updated jenkins build job ', $d->{build_job}, ' with last commit sha ', $d->{last_commit}->{sha});
+
+                JenkinsRequest(
+                    'job/'.$d->{build_job}.'/build?delay=0sec',
+                    sub {
+                        my (undef, $header) = @_;
+                        
+                        if ($@) {
+                            $@ = 'jenkins start job failed: '.$@;
+                            $d->{cb}->();
+                            return;
+                        }
+                        
+                        my $w; $w = AnyEvent->timer(
+                            after => 1,
+                            cb => sub {
+                                JenkinsRequest(
+                                    $header->{location},
+                                    sub {
+                                        my ($job) = @_;
+                
+                                        if ($@) {
+                                            $@ = 'jenkins start job failed (queue): '.$@;
+                                            $d->{cb}->();
+                                            return;
+                                        }
+                                        
+                                        unless (ref($job) eq 'HASH'
+                                            and ref($job->{executable}) eq 'HASH'
+                                            and defined $job->{executable}->{number}
+                                            and defined $job->{executable}->{url})
+                                        {
+                                            $@ = 'jenkins start job request invalid (queue)';
+                                            $d->{cb}->();
+                                            return;
+                                        }
+                                        
+                                        $d->{build_number} = $job->{executable}->{number};
+                                        $d->{build_url} = $job->{executable}->{url};
+                                        $logger->info('Started jenkins job ', $d->{build_job}, ' number ', $d->{build_number});
+                                        CheckPullRequest_UpdateStatus($d);
+                                    });
+                                undef $w;
                             });
-                        undef $w;
-                    });
+                    },
+                    no_json => 1);
             },
-            no_json => 1);
+            headers => {
+                'Content-Type' => 'text/xml'
+            },
+            no_json => 1,
+            method => 'POST',
+            body => ReadTemplate($d->{build_job_template}, $d->{build_job_define}));
         return;
     }
     
@@ -1264,7 +1404,7 @@ sub CheckPullRequest_UpdateStatus {
     }
     
     if ($build_job->{data}->{lastBuild}->{number} >= $d->{build_number}) {
-        my ($success, $failure) = (1, 0);
+        my ($success, $failure, $need_success) = (0, 0, 0);
         my $failure_url;
         
         my @check = ($d->{build_job});
@@ -1279,10 +1419,10 @@ sub CheckPullRequest_UpdateStatus {
             
             unless (defined $job->{build}) {
                 # chain not fully built yet
-                $success = 0;
                 $logger->debug($name, ' not built yet');
                 last;
             }
+            $need_success++;
 
             # check that job relates to parent job unless its the build job
             unless ($name eq $d->{build_job}) {
@@ -1308,25 +1448,33 @@ sub CheckPullRequest_UpdateStatus {
                     and $cause->{upstreamBuild} == $d->{job}->{$cause->{upstreamProject}}->{data}->{lastBuild}->{number})
                 {
                     # child project not triggered yet
-                    $success = 0;
                     $logger->debug($name, ' not built yet for upstream project');
                     last;
                 }
             }
             
             if (defined $job->{build}->{result}) {
+                $logger->debug('Result for ', $name, ' is ', $job->{build}->{result});
                 unless ($job->{build}->{result} eq 'SUCCESS') {
                     $failure_url = $job->{build}->{url};
-                    $success = 0;
                     $failure = 1;
                     last;
                 }
+                if (defined $job->{test}) {
+                    $logger->debug('Test report for ', $name, ' is ', $job->{test}->{failCount}, ' failed of ', $job->{test}->{totalCount}, ' total');
+                    if ($job->{test}->{failCount}) {
+                        $failure_url = $job->{build}->{url}.'testReport';
+                        $failure = 1;
+                        last;
+                    }
+                }
+                $success++;
             }
             
             push(@check, split(/\s*,\s*/o, $job->{childs}));
         }
         
-        if ($success) {
+        if ($need_success and $need_success == $success) {
             CheckPullRequest_UpdateStatus2(
                 $d,
                 'success',
@@ -1372,6 +1520,7 @@ sub CheckPullRequest_UpdateStatus2 {
                 return;
             }
             $logger->info('State ', $state, ' for ', $d->{repo}, ' number ', $d->{pull}->{number});
+            $d->{state}->{state} = $state;
             $d->{cb}->();
         },
         method => 'POST',
@@ -1415,6 +1564,10 @@ sub DeletePullRequest {
         JenkinsRequest(
             'job/'.$name.'/doWipeOutWorkspace?',
             sub {
+                if ($@ =~ /not found/io) {
+                    undef $@;
+                }
+                
                 if ($@) {
                     $@ = 'jenkins wipe workspace failed: '.$@;
                     $d->{cb}->();
@@ -1427,6 +1580,10 @@ sub DeletePullRequest {
                 JenkinsRequest(
                     'job/'.$name.'/doDelete?',
                     sub {
+                        if ($@ =~ /not found/io) {
+                            undef $@;
+                        }
+                        
                         if ($@) {
                             $@ = 'jenkins delete job failed: '.$@;
                             $d->{cb}->();
@@ -1437,11 +1594,52 @@ sub DeletePullRequest {
                         $logger->debug('Job ', $name, ' deleted');
                         $code->();
                     },
+                    method => 'POST',
                     no_json => 1);
             },
+            method => 'POST',
             no_json => 1);
     };
     $code->();
+}
+
+#
+# Check Jenkins if pull-clean job is enabled, if not then we disable operations
+#
+
+sub CheckJenkins {
+    my ($cb) = @_;
+    
+    JenkinsRequest(
+        'job/pull-clean',
+        sub {
+            my ($job) = @_;
+            
+            if ($@) {
+                $@ = 'jenkins check failed: '.$@;
+                $jenkins_enabled = 0;
+                $cb->();
+                return;
+            }
+
+            unless (ref($job) eq 'HASH'
+                and defined $job->{buildable})
+            {
+                $@ = 'jenkins check request invalid';
+                $jenkins_enabled = 0;
+                $cb->();
+                return;
+            }
+            
+            if ($job->{buildable}) {
+                $jenkins_enabled = 1;
+            }
+            else {
+                $jenkins_enabled = 0;
+            }
+            
+            $cb->();
+        });
 }
 
 __END__
