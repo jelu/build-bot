@@ -27,6 +27,10 @@ my $config;
 my %CFG = (
     CHECK_PULL_REQUESTS_INTERVAL => 300,
     CHECK_PULL_REQUEST_INTERVAL => 600,
+    CHECK_JENKINS_INTERVAL => 30,
+
+    TRY_DELETE_JOB => 10,
+
     REVIEWER => {
     },
     
@@ -994,7 +998,7 @@ sub CheckPullRequest_GetStatuses {
         unless (defined $d->{state}->{state}) {
             $d->{state}->{state} = 'pending';
         }
-        CheckPullRequest_CheckJobs($d);
+        CheckPullRequest_Verify($d);
         return;
     }
     # If pending, check build status
@@ -1011,25 +1015,40 @@ sub CheckPullRequest_GetStatuses {
             unless (defined $d->{state}->{state}) {
                 $d->{state}->{state} = 'pending';
             }
-            CheckPullRequest_CheckJobs($d);
+            CheckPullRequest_Verify($d);
             return;
         }
     }
     # If success or failure, check last build command date if newer and build
     elsif ($status->{state} eq 'success'
-        or $status->{state} eq 'failure')
+        or $status->{state} eq 'failure'
+        or $status->{state} eq 'error')
     {
-        if ($status->{description} =~ /^\s*Build\s+(\d+)\s+(?:successful|failed)/o) {
+        my $state;
+        if ($status->{description} =~ /^\s*Build\s+(\d+)\s+(?:successful|failed|error)/o) {
             $d->{build_number} = $1;
-            my $state = $2;
+            $state = $2;
             if ($d->{build_number} < 1) {
                 $@ = 'Invalid build number from status';
                 $d->{cb}->();
                 return;
             }
-            
+        }
+        elsif ($status->{description} =~ /^\s*Build\s+error/o) {
+            $state = 'error';
+        }
+        
+        # TODO: maybe check extracted state with status state and/or use status state
+        
+        if (defined $state) {
             unless (defined $d->{state}->{state}) {
-                $d->{state}->{state} = $state eq 'successful' ? 'success' : 'failure';
+                if ($state eq 'successful') {
+                    $state = 'success';
+                }
+                elsif ($state eq 'failed') {
+                    $state = 'failure';
+                }
+                $d->{state}->{state} = $state;
             }
 
             if ($d->{build_at} ge $status->{created_at}) {
@@ -1040,7 +1059,7 @@ sub CheckPullRequest_GetStatuses {
                 }
                 $d->{build} = 1;
                 $d->{status} = $d->{last_commit_status};
-                CheckPullRequest_CheckJobs($d);
+                CheckPullRequest_Verify($d);
                 return;
             }
             
@@ -1051,6 +1070,27 @@ sub CheckPullRequest_GetStatuses {
 
     $@ = 'Invalid status';
     $d->{cb}->();
+}
+
+#
+# Verify data and set error if there are any problems
+#
+
+sub CheckPullRequest_Verify {
+    my ($d) = @_;
+
+    if ($d->{build} or $d->{state}->{state} eq 'pending') {
+        if ($d->{pull}->{base}->{ref} =~ /master$/) {
+            CheckPullRequest_UpdateStatus2(
+                $d,
+                'error',
+                $d->{pull}->{url},
+                'Build error: Merging into *master not allowed');
+            return;
+        }
+    }
+    
+    CheckPullRequest_CheckJobs($d);
 }
 
 #
