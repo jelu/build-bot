@@ -2,6 +2,8 @@
 #
 # Copyright (c) 2014 OpenDNSSEC AB (svb). All rights reserved.
 
+# TODO: add error check per unique call, if call fails more then X set status to error if possible
+
 use common::sense;
 use Carp;
 
@@ -312,7 +314,39 @@ JENKINS_JOBS))
         }
     }
     
-    # TODO: check more, verify hash deep
+    foreach (keys %{$CFG{GITHUB_REPO}}) {
+        unless (ref($CFG{GITHUB_REPO}->{$_}) eq 'HASH') {
+            confess 'GITHUB_REPO entry '.$_.' invalid, not a HASH';
+        }
+
+        foreach my $required (qw(jobs base)) {
+            unless (defined $CFG{GITHUB_REPO}->{$_}->{$required} and $CFG{GITHUB_REPO}->{$_}->{$required}) {
+                confess 'Missing or empty required configuration '.$required.' in GITHUB_REPO entry '.$_;
+            }
+        }
+    }
+
+    foreach (keys %{$CFG{JENKINS_JOBS}}) {
+        unless (ref($CFG{JENKINS_JOBS}->{$_}) eq 'ARRAY') {
+            confess 'JENKINS_JOBS entry '.$_.' invalid, not an ARRAY';
+        }
+
+        foreach my $job (@{$CFG{JENKINS_JOBS}->{$_}}) {
+            unless (ref($job) eq 'HASH') {
+                confess 'Entry in JENKINS_JOBS '.$_.' invalid, not a HASH';
+            }
+            
+            foreach my $required (qw(name template)) {
+                unless (defined $job->{$required} and $job->{$required}) {
+                    confess 'Missing or empty required configuration '.$required.' in JENKINS_JOBS entry '.$_;
+                }
+            }
+            
+            if (exists $job->{define} and ref($job->{define}) ne 'HASH') {
+                confess 'Entry "define" in JENKINS_JOBS '.$_.' invalid, not a HASH';
+            }
+        }
+    }
 }
 
 #
@@ -405,13 +439,9 @@ sub VerifyPullRequest {
         and defined $pull->{number}
         and defined $pull->{patch_url}
         and defined $pull->{url}
+        and defined $pull->{comments_url}
         and defined $pull->{statuses_url}
         and exists $pull->{merged_at}
-        and ref($pull->{_links}) eq 'HASH'
-        and ref($pull->{_links}->{comments}) eq 'HASH'
-        and defined $pull->{_links}->{comments}->{href}
-        and ref($pull->{_links}->{statuses}) eq 'HASH'
-        and defined $pull->{_links}->{statuses}->{href}
         and ref($pull->{base}) eq 'HASH'
         and defined $pull->{base}->{ref}
         and ref($pull->{base}->{repo}) eq 'HASH'
@@ -812,11 +842,9 @@ sub CheckPullRequests {
 sub CheckPullRequest {
     my ($d) = @_;
 
-    # TODO: remove _links depends
-
     # Get comments
     GitHubRequest(
-        $d->{pull}->{_links}->{comments}->{href},
+        $d->{pull}->{comments_url},
         sub {
             CheckPullRequest_GetComments($d, @_);
         });
@@ -921,7 +949,7 @@ sub CheckPullRequest_GetCommits {
     }
     
     # Get statuses for each commit
-    my @href = split(/\//o, $d->{pull}->{_links}->{statuses}->{href});
+    my @href = split(/\//o, $d->{pull}->{statuses_url});
     pop(@href);
     $d->{last_commit_status} = join('/', @href, $d->{last_commit}->{sha});
     my @statuses;
@@ -1025,9 +1053,22 @@ sub CheckPullRequest_GetStatuses {
         or $status->{state} eq 'error')
     {
         my $state;
-        if ($status->{description} =~ /^\s*Build\s+(\d+)\s+(?:successful|failed|error)/o) {
+        if ($status->{description} =~ /^\s*Build\s+(\d+)\s+((?:successful|failed|error))/o) {
             $d->{build_number} = $1;
             $state = $2;
+            
+            if ($state eq 'successful') {
+                $state = 'success';
+            }
+            elsif ($state eq 'failed') {
+                $state = 'failure';
+            }
+            elsif ($state eq 'error') {
+            }
+            else {
+                undef $state;
+            }
+            
             if ($d->{build_number} < 1) {
                 $@ = 'Invalid build number from status';
                 $d->{cb}->();
@@ -1038,16 +1079,8 @@ sub CheckPullRequest_GetStatuses {
             $state = 'error';
         }
         
-        # TODO: maybe check extracted state with status state and/or use status state
-        
-        if (defined $state) {
+        if (defined $state and $state eq $status->{state}) {
             unless (defined $d->{state}->{state}) {
-                if ($state eq 'successful') {
-                    $state = 'success';
-                }
-                elsif ($state eq 'failed') {
-                    $state = 'failure';
-                }
                 $d->{state}->{state} = $state;
             }
 
@@ -1457,12 +1490,12 @@ sub CheckPullRequest_UpdateStatus {
             }
             $logger->debug('Checking ', $name);
             
+            $need_success++;
             unless (defined $job->{build}) {
                 # chain not fully built yet
                 $logger->debug($name, ' not built yet');
                 last;
             }
-            $need_success++;
 
             # check that job relates to parent job unless its the build job
             unless ($name eq $d->{build_job}) {
