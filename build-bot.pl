@@ -3,6 +3,13 @@
 # Copyright (c) 2014 OpenDNSSEC AB (svb). All rights reserved.
 
 # TODO: add error check per unique call, if call fails more then X set status to error if possible
+# TODO: build bot commands:
+#    build - build and test
+#    test - build and test only modified tests, if no modified tests then test all
+#    merge - run build and merge if success
+#    build merge - same as merge
+#    test merge - run test and merge if success
+# TODO: reload config on HUP, remove old repos if removed from config, delete pull request watchers
 
 use common::sense;
 use Carp;
@@ -1281,30 +1288,6 @@ sub CheckPullRequest_CheckJobs {
                                 };
                                 $code->();
                             });
-
-#                        JenkinsRequest(
-#                            $data->{lastBuild}->{url}.'consoleText',
-#                            sub {
-#                                my ($console) = @_;
-#                                
-#                                if ($@) {
-#                                    $@ = 'jenkins console request failed: '.$@;
-#                                    $d->{cb}->();
-#                                    undef $code;
-#                                    return;
-#                                }
-#                                
-#                                if ($console =~ /GIT_PR_COMMIT=(\S+)/om) {
-#                                    $d->{job}->{$name}->{commit} = $1;
-#                                    $code->();
-#                                    return;
-#                                }
-#                                
-#                                $@ = 'jenkins console invalid failed';
-#                                $d->{cb}->();
-#                                undef $code;
-#                            },
-#                            no_json => 1);
                     });
             });
     };
