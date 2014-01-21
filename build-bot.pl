@@ -10,6 +10,7 @@
 #    build merge - same as merge
 #    test merge - run test and merge if success
 # TODO: reload config on HUP, remove old repos if removed from config, delete pull request watchers
+# TODO: access level per command, extract from GitHub or configure
 
 use common::sense;
 use Carp;
