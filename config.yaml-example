@@ -14,6 +14,7 @@ GITHUB_REPO:
   SoftHSMv1:
     jobs: softhsm
     base: softhsm
+    allow-merge-master: 1
   opendnssec-workflow-test:
     jobs: opendnssec
     base: opendnssec-workflow-test

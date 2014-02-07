@@ -891,7 +891,7 @@ sub CheckPullRequest_GetComments {
             next;
         }
         
-        if ($comment->{body} =~ /^\s*bot\s+build\s*$/o) {
+        if ($comment->{body} =~ /^\s*bot\s+build\s*$/mo) {
             $build = 1;
             $at = $comment->{created_at};
         }
@@ -1121,7 +1121,7 @@ sub CheckPullRequest_Verify {
     my ($d) = @_;
 
     if ($d->{build} or $d->{state}->{state} eq 'pending') {
-        if ($d->{pull}->{base}->{ref} =~ /master$/) {
+        if ($d->{pull}->{base}->{ref} =~ /master$/ and !$CFG{GITHUB_REPO}->{$d->{repo}}->{'allow-merge-master'}) {
             CheckPullRequest_UpdateStatus2(
                 $d,
                 'error',
