@@ -891,7 +891,7 @@ sub CheckPullRequest_GetComments {
             next;
         }
         
-        if ($comment->{body} =~ /^\s*bot\s+build\s*$/mo) {
+        if ($comment->{body} =~ /#build(?:\s|$)/mo) {
             $build = 1;
             $at = $comment->{created_at};
         }
