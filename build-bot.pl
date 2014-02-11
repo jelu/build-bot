@@ -4,13 +4,11 @@
 
 # TODO: add error check per unique call, if call fails more then X set status to error if possible
 # TODO: build bot commands:
-#    build - build and test
 #    test - build and test only modified tests, if no modified tests then test all
 #    merge - run build and merge if success
 #    build merge - same as merge
 #    test merge - run test and merge if success
 # TODO: reload config on HUP, remove old repos if removed from config, delete pull request watchers
-# TODO: access level per command, extract from GitHub or configure
 
 use common::sense;
 use Carp;
@@ -49,6 +47,9 @@ my %CFG = (
     GITHUB_REPO => {
         # repo =>
         #   jobs =>
+        #   base =>
+        #   access =>
+        #     user =>
     },
     GITHUB_CACHE_EXPIRE => 7200,
 
@@ -332,6 +333,10 @@ JENKINS_JOBS))
                 confess 'Missing or empty required configuration '.$required.' in GITHUB_REPO entry '.$_;
             }
         }
+        
+        if (exists $CFG{GITHUB_REPO}->{$_}->{access} and ref($CFG{GITHUB_REPO}->{$_}->{access}) ne 'HASH') {
+            confess 'Entry "access" in GITHUB_REPO '.$_.' invalid, not a HASH';
+        }
     }
 
     foreach (keys %{$CFG{JENKINS_JOBS}}) {
@@ -444,6 +449,9 @@ sub VerifyPullRequest {
     my ($pull) = @_;
     
     unless (ref($pull) eq 'HASH'
+        and ref($pull->{user}) eq 'HASH'
+        and defined $pull->{user}->{login}
+        and defined $pull->{created_at}
         and defined $pull->{number}
         and defined $pull->{patch_url}
         and defined $pull->{url}
@@ -885,15 +893,55 @@ sub CheckPullRequest_GetComments {
         }
     }
     
-    my ($build, $at);
+    my ($build, $at, $command);
     foreach my $comment (sort {$a->{created_at} cmp $b->{created_at}} @$comments) {
         unless (exists $CFG{REVIEWER}->{$comment->{user}->{login}}) {
             next;
         }
         
-        if ($comment->{body} =~ /#build(?:\s|$)/mo) {
+        if ($comment->{body} =~ /#((?:build))(?:\s|$)/mo) {
+            $command = $1;
+
+            if (exists $CFG{GITHUB_REPO}->{$d->{repo}}->{access}) {
+                my %access;
+                if (exists $CFG{GITHUB_REPO}->{$d->{repo}}->{access}->{$comment->{user}->{login}}) {
+                    %access = map { $_ => 1 } split(/[\s,]+/o, $CFG{GITHUB_REPO}->{$d->{repo}}->{access}->{$comment->{user}->{login}});
+                }
+                elsif (exists $CFG{GITHUB_REPO}->{$d->{repo}}->{access}->{'*'}) {
+                    %access = map { $_ => 1 } split(/[\s,]+/o, $CFG{GITHUB_REPO}->{$d->{repo}}->{access}->{'*'});
+                }
+                else {
+                    undef $command;
+                    next;
+                }
+    
+                unless ($access{all} or exists $access{$command}) {
+                    undef $command;
+                    next;
+                }
+            }
+            
             $build = 1;
             $at = $comment->{created_at};
+        }
+    }
+    
+    # If no command check for autobuild
+    unless ($command) {
+        if (exists $CFG{GITHUB_REPO}->{$d->{repo}}->{access}) {
+            my %access;
+            if (exists $CFG{GITHUB_REPO}->{$d->{repo}}->{access}->{$d->{pull}->{user}->{login}}) {
+                %access = map { $_ => 1 } split(/[\s,]+/o, $CFG{GITHUB_REPO}->{$d->{repo}}->{access}->{$d->{pull}->{user}->{login}});
+            }
+            elsif (exists $CFG{GITHUB_REPO}->{$d->{repo}}->{access}->{'*'}) {
+                %access = map { $_ => 1 } split(/[\s,]+/o, $CFG{GITHUB_REPO}->{$d->{repo}}->{access}->{'*'});
+            }
+            
+            if (exists $access{autobuild}) {
+                $at = $d->{pull}->{created_at};
+                $build = 1;
+                $d->{autobuild} = 1;
+            }
         }
     }
     
@@ -1092,7 +1140,7 @@ sub CheckPullRequest_GetStatuses {
                 $d->{state}->{state} = $state;
             }
 
-            if ($d->{build_at} ge $status->{created_at}) {
+            if ($d->{build_at} ge $status->{created_at} and !$d->{autobuild}) {
                 if ($d->{commit_after_build}) {
                     $logger->info('Commit after build command for ', $d->{repo}, ' number ', $d->{pull}->{number});
                     $d->{cb}->();

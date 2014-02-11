@@ -5,6 +5,7 @@ CHECK_JENKINS_INTERVAL: 60
 
 TRY_DELETE_JOB: 10
 
+# Reviewers have access to all repositories and commands
 REVIEWER:
   jelu: 1
 
@@ -15,9 +16,13 @@ GITHUB_REPO:
     jobs: softhsm
     base: softhsm
     allow-merge-master: 1
+    access:
+      jelu: build
   opendnssec-workflow-test:
     jobs: opendnssec
     base: opendnssec-workflow-test
+    access:
+      jelu: autobuild build
 # GITHUB_CACHE_EXPIRE: 7200
 
 # JENKINS_USERNAME: username

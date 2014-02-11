@@ -28,12 +28,10 @@
         <string>ubuntu10-ods01</string>
         <string>freebsd32-ods15</string>
         <string>freebsd9-ods06</string>
-        <string>solaris11-x86-ods09</string>
         <string>openbsd64-ods10</string>
         <string>opensuse32-ods14</string>
         <string>suse11-ods05</string>
         <string>redhat64-ods08</string>
-        
         <string>freebsd10-ods07</string>
         <string>suse64-ods11</string>
         <string>ubuntu12-amd64-ods03</string>
