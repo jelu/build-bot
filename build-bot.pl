@@ -9,6 +9,7 @@
 #    build merge - same as merge
 #    test merge - run test and merge if success
 # TODO: reload config on HUP, remove old repos if removed from config, delete pull request watchers
+# TODO: Scan Jenkins for old pull request, check GitHub if closed and clean up
 
 use common::sense;
 use Carp;
