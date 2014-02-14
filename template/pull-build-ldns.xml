@@ -10,25 +10,9 @@
   </logRotator>
   <keepDependencies>false</keepDependencies>
   <properties/>
-  <scm class="hudson.scm.SubversionSCM" plugin="subversion@1.54">
-    <locations>
-      <hudson.scm.SubversionSCM_-ModuleLocation>
-        <remote>http://svn.opendnssec.org/branches/OpenDNSSEC-1.3/testing</remote>
-        <local>.</local>
-        <depthOption>infinity</depthOption>
-        <ignoreExternalsOption>false</ignoreExternalsOption>
-      </hudson.scm.SubversionSCM_-ModuleLocation>
-    </locations>
-    <excludedRegions>.*/test-cases.d/.*
-.*/test-cases-daily.d/.*
-.*/test-cases-sandbox.d/.*</excludedRegions>
-    <includedRegions></includedRegions>
-    <excludedUsers></excludedUsers>
-    <excludedRevprop></excludedRevprop>
-    <excludedCommitMessages></excludedCommitMessages>
-    <workspaceUpdater class="hudson.scm.subversion.UpdateUpdater"/>
-    <ignoreDirPropChanges>false</ignoreDirPropChanges>
-    <filterChangelog>false</filterChangelog>
+  <scm class="hudson.plugins.cloneworkspace.CloneWorkspaceSCM" plugin="clone-workspace-scm@0.6">
+    <parentJobName>pull-@PR@-fetch-test</parentJobName>
+    <criteria>Successful</criteria>
   </scm>
   <canRoam>true</canRoam>
   <disabled>false</disabled>
@@ -40,25 +24,18 @@
     <hudson.matrix.LabelAxis>
       <name>label</name>
       <values>
-        <string>centos32-ods13</string>
         <string>ubuntu10-ods01</string>
-        <string>freebsd32-ods15</string>
         <string>freebsd9-ods06</string>
-        <string>openbsd64-ods10</string>
-        <string>opensuse32-ods14</string>
         <string>suse11-ods05</string>
         <string>redhat64-ods08</string>
         <string>freebsd10-ods07</string>
-        <string>suse64-ods11</string>
-        <string>ubuntu12-amd64-ods03</string>
-        <string>ubuntu32-ods12</string>
         <string>ubuntu12-ods02</string>
       </values>
     </hudson.matrix.LabelAxis>
   </axes>
   <builders>
     <hudson.tasks.Shell>
-      <command>INSTALL_TAG=&quot;pull-@PR@&quot; env bash build-ldns.sh</command>
+      <command>cd testing &amp;&amp; GIT_COMMIT=`cat ../.revision` INSTALL_TAG=&quot;pull-@PR@&quot; env bash build-ldns.sh</command>
     </hudson.tasks.Shell>
   </builders>
   <publishers>
