@@ -504,7 +504,9 @@ sub VerifyCommit {
         and defined $commit->{sha}
         and ref($commit->{commit}) eq 'HASH'
         and ref($commit->{commit}->{author}) eq 'HASH'
-        and defined $commit->{commit}->{author}->{date})
+        and defined $commit->{commit}->{author}->{date}
+        and ref($commit->{commit}->{committer}) eq 'HASH'
+        and defined $commit->{commit}->{committer}->{date})
     {
         return;
     }
@@ -895,14 +897,13 @@ sub CheckPullRequest_GetComments {
     
     my ($build, $at, $command);
     foreach my $comment (sort {$a->{created_at} cmp $b->{created_at}} @$comments) {
-        unless (exists $CFG{REVIEWER}->{$comment->{user}->{login}}) {
-            next;
-        }
-        
         if ($comment->{body} =~ /#((?:build))(?:\s|$)/mo) {
             $command = $1;
 
-            if (exists $CFG{GITHUB_REPO}->{$d->{repo}}->{access}) {
+            if (exists $CFG{REVIEWER}->{$comment->{user}->{login}}) {
+                # catch REVIEWER access first
+            }
+            elsif (exists $CFG{GITHUB_REPO}->{$d->{repo}}->{access}) {
                 my %access;
                 if (exists $CFG{GITHUB_REPO}->{$d->{repo}}->{access}->{$comment->{user}->{login}}) {
                     %access = map { $_ => 1 } split(/[\s,]+/o, $CFG{GITHUB_REPO}->{$d->{repo}}->{access}->{$comment->{user}->{login}});
@@ -919,6 +920,11 @@ sub CheckPullRequest_GetComments {
                     undef $command;
                     next;
                 }
+            }
+            else {
+                # No access
+                undef $command;
+                next;
             }
             
             $build = 1;
@@ -951,6 +957,7 @@ sub CheckPullRequest_GetComments {
         return;
     }
     
+    $logger->debug('PullRequest ', $d->{pull}->{number}, ': build at ', $at);
     $d->{build_at} = $at;
 
     # Get pull request commits
@@ -987,14 +994,19 @@ sub CheckPullRequest_GetCommits {
             $d->{cb}->();
             return;
         }
+        my $date = $commit->{commit}->{author}->{date};
+        if ($commit->{commit}->{committer}->{date} gt $date) {
+            $date = $commit->{commit}->{committer}->{date};
+        }
         
-        if ($commit->{commit}->{author}->{date} ge $d->{build_at}) {
+        if ($date ge $d->{build_at}) {
             # There is a commit after or at the build command, log it
             $d->{commit_after_build} = 1;
         }
         
-        if ($commit->{commit}->{author}->{date} > $last_commit_at) {
+        if ($date gt $last_commit_at) {
             $d->{last_commit} = $commit;
+            $last_commit_at = $date;
         }
     }
     
