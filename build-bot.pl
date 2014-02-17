@@ -310,7 +310,8 @@ GITHUB_TOKEN
 JENKINS_USERNAME
 JENKINS_TOKEN
 OPERATION_START
-OPERATION_END))
+OPERATION_END
+TEMPLATE_PATH))
     {
         unless (defined $CFG{$required} and $CFG{$required}) {
             confess 'Missing or empty required configuration '.$required;
@@ -701,7 +702,7 @@ sub ResolveDefines {
 sub ReadTemplate {
     my ($template, $define) = @_;
     
-    unless (-r 'template/'.$template.'.xml') {
+    unless (-r $CFG{TEMPLATE_PATH}.'/'.$template.'.xml') {
         confess '$template ['.$template.'] is not a file or can not be read';
     }
     unless (ref($define) eq 'HASH') {
@@ -710,7 +711,7 @@ sub ReadTemplate {
     
     local($/) = undef;
     local(*FILE);
-    open(FILE, 'template/'.$template.'.xml') or confess 'open '.$template.' failed: '.$!;
+    open(FILE, $CFG{TEMPLATE_PATH}.'/'.$template.'.xml') or confess 'open '.$template.' failed: '.$!;
     my $string = <FILE>;
     close(FILE);
     
