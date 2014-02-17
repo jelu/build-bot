@@ -105,7 +105,7 @@ elsif ($daemon) {
     log4perl.logger                    = DEBUG, SYSLOG
     log4perl.appender.SYSLOG           = Log::Dispatch::Syslog
     log4perl.appender.SYSLOG.min_level = debug
-    log4perl.appender.SYSLOG.ident     = exec
+    log4perl.appender.SYSLOG.ident     = build-bot.pl
     log4perl.appender.SYSLOG.facility  = daemon
     log4perl.appender.SYSLOG.layout    = Log::Log4perl::Layout::SimpleLayout
     ) );
@@ -1769,11 +1769,11 @@ __END__
 
 =head1 NAME
 
-exec - Description
+build-bot.pl - Description
 
 =head1 SYNOPSIS
 
-exec [options]
+build-bot.pl [options]
 
 =head1 OPTIONS
 
