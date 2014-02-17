@@ -246,11 +246,12 @@ push(@watchers, AnyEvent->timer(
         }));
 }
 
+my $after = 2;
 foreach my $repo (keys %{$CFG{GITHUB_REPO}}) {
     my $lock = 0;
     $delete_pull_request{$repo} = {};
     push(@watchers, AnyEvent->timer(
-        after => 1,
+        after => $after,
         interval => $CFG{CHECK_PULL_REQUESTS_INTERVAL},
         cb => sub {
             if ($lock) {
@@ -276,6 +277,7 @@ foreach my $repo (keys %{$CFG{GITHUB_REPO}}) {
             });
         }
     ));
+    $after += 3;
 }
 
 $cv->recv;
@@ -748,6 +750,7 @@ sub CheckPullRequests {
             }
 
             my %have_pull;
+            my $after = 2;
             foreach my $pull (@$pulls) {
                 unless (VerifyPullRequest($pull)) {
                     next;
@@ -781,7 +784,7 @@ sub CheckPullRequests {
                     };
                     $have_pull{$pull->{number}} = 1;
                     $pull_request{$repo}->{$pull->{number}} = AnyEvent->timer(
-                        after => 1,
+                        after => $after,
                         interval => $CFG{CHECK_PULL_REQUEST_INTERVAL},
                         cb => sub {
                             if ($lock) {
@@ -842,6 +845,7 @@ sub CheckPullRequests {
                                 state => $state
                             });
                         });
+                    $after += 3;
                 }
             }
             
