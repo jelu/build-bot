@@ -72,11 +72,6 @@ my %delete_pull_request;
 my $jenkins_enabled = 0;
 my %_GITHUB_CACHE;
 my %_GITHUB_CACHE_TS;
-tie %_GITHUB_CACHE, 'GDBM_File', 'github.db', &GDBM_WRCREAT, 0640;
-foreach my $key (keys %_GITHUB_CACHE) {
-    $key =~ s/:(?:etag|data)$//o;
-    $_GITHUB_CACHE_TS{$key} = time;
-}
 
 Getopt::Long::GetOptions(
     'help|?' => \$help,
@@ -175,6 +170,12 @@ if ($daemon) {
     open(STDIN, '<', '/dev/null');
     open(STDOUT, '>', '/dev/null');
     open(STDERR, '>', '/dev/null');
+}
+
+tie %_GITHUB_CACHE, 'GDBM_File', 'github.db', &GDBM_WRCREAT, 0640;
+foreach my $key (keys %_GITHUB_CACHE) {
+    $key =~ s/:(?:etag|data)$//o;
+    $_GITHUB_CACHE_TS{$key} = time;
 }
 
 my $cv = AnyEvent->condvar;
