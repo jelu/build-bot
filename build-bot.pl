@@ -34,6 +34,9 @@ my $pidfile;
 my $config;
 
 my %CFG = (
+    LOG_GITHUB_REQUEST => 0,
+    LOG_JENKINS_REQUEST => 0,
+    
     CHECK_PULL_REQUESTS_INTERVAL => 300,
     CHECK_PULL_REQUEST_INTERVAL => 600,
     CHECK_JENKINS_INTERVAL => 30,
@@ -400,7 +403,7 @@ sub GitHubRequest {
         $_GITHUB_CACHE_TS{$url} = time;
     }
     
-    $logger->debug('GitHubRequest ', $method, ' https://api.github.com/'.$url);
+    $CFG{LOG_GITHUB_REQUEST} and $logger->debug('GitHubRequest ', $method, ' https://api.github.com/'.$url);
     AnyEvent::HTTP::http_request $method, 'https://api.github.com/'.$url,
         %args,
         sub {
@@ -413,7 +416,7 @@ sub GitHubRequest {
             }
             
             if ($header->{Status} eq '304') {
-                $logger->debug('GitHubRequest ', 'https://api.github.com/'.$url, ' 304 cached');
+                $CFG{LOG_GITHUB_REQUEST} and $logger->debug('GitHubRequest ', 'https://api.github.com/'.$url, ' 304 cached');
                 $body = $_GITHUB_CACHE{$url.':data'};
             }
             elsif ($header->{Status} =~ /^2/o) {
@@ -421,7 +424,7 @@ sub GitHubRequest {
                     $_GITHUB_CACHE{$url.':etag'} = $header->{etag};
                     $_GITHUB_CACHE{$url.':data'} = $body;
                     $_GITHUB_CACHE_TS{$url} = time;
-                    $logger->debug('GitHubRequest ', 'https://api.github.com/'.$url, ' cached');
+                    $CFG{LOG_GITHUB_REQUEST} and $logger->debug('GitHubRequest ', 'https://api.github.com/'.$url, ' cached');
                 }
             }
             else {
@@ -511,9 +514,16 @@ sub VerifyCommit {
         and ref($commit->{commit}->{author}) eq 'HASH'
         and defined $commit->{commit}->{author}->{date}
         and ref($commit->{commit}->{committer}) eq 'HASH'
-        and defined $commit->{commit}->{committer}->{date})
+        and defined $commit->{commit}->{committer}->{date}
+        and ref($commit->{parents}) eq 'ARRAY')
     {
         return;
+    }
+    
+    foreach (@{$commit->{parents}}) {
+        unless (ref($_) eq 'HASH' and defined $_->{sha}) {
+            return;
+        }
     }
     
     return 1;
@@ -559,8 +569,7 @@ sub JenkinsRequest {
     $args{headers}->{'User-Agent'} = 'curl/7.32.0';
     $args{headers}->{Authorization} = 'Basic '.MIME::Base64::encode($CFG{JENKINS_USERNAME}.':'.$CFG{JENKINS_TOKEN}, '');
     
-    $logger->debug('JenkinsRequest ', $method, ' https://jenkins.opendnssec.org/'.$url);
-
+    $CFG{LOG_JENKINS_REQUEST} and $logger->debug('JenkinsRequest ', $method, ' https://jenkins.opendnssec.org/'.$url);
     AnyEvent::HTTP::http_request $method, 'https://jenkins.opendnssec.org/'.$url,
         %args,
         sub {
@@ -994,13 +1003,16 @@ sub CheckPullRequest_GetCommits {
         return;
     }
     
-    my $last_commit_at = '';
+    my (%commit, %parent);
     foreach my $commit (@$commits) {
         unless (VerifyCommit($commit)) {
             $@ = 'Commit not valid';
             $d->{cb}->();
             return;
         }
+        
+        # Check author and committer date to see if any commit or rebased
+        # commit has been issues after the build command
         my $date = $commit->{commit}->{author}->{date};
         if ($commit->{commit}->{committer}->{date} gt $date) {
             $date = $commit->{commit}->{committer}->{date};
@@ -1011,10 +1023,24 @@ sub CheckPullRequest_GetCommits {
             $d->{commit_after_build} = 1;
         }
         
-        if ($date gt $last_commit_at) {
-            $d->{last_commit} = $commit;
-            $last_commit_at = $date;
+        # Store all commits and parents to verify the chain and get the last commit
+        $commit{$commit->{sha}} = $commit;
+        foreach my $parent (@{$commit->{parents}}) {
+            $parent{$parent->{sha}} = 1;
         }
+    }
+    
+    # Remove all parent SHAs from %commit, last standing will be the last commit
+    foreach my $sha (keys %parent) {
+        delete $commit{$sha};
+    }
+    foreach my $sha (keys %commit) {
+        if (defined $d->{last_commit}) {
+            $@ = 'multiple last commit found?';
+            $d->{cb}->();
+            return;
+        }
+        $d->{last_commit} = $commit{$sha};
     }
     
     unless (defined $d->{last_commit}) {
