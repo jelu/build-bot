@@ -913,7 +913,7 @@ sub CheckPullRequest_GetComments {
     
     my ($build, $at, $command);
     foreach my $comment (sort {$a->{created_at} cmp $b->{created_at}} @$comments) {
-        if ($comment->{body} =~ /#((?:build))(?:\s|$)/mo) {
+        if ($comment->{body} =~ /#((?:build|newbuild))(?:\s|$)/mo) {
             $command = $1;
 
             if (exists $CFG{REVIEWER}->{$comment->{user}->{login}}) {
@@ -975,6 +975,9 @@ sub CheckPullRequest_GetComments {
     
     $logger->debug('PullRequest ', $d->{pull}->{number}, ': build at ', $at);
     $d->{build_at} = $at;
+    if ($command eq 'newbuild') {
+        $d->{new_build} = 1;
+    }
 
     # Get pull request commits
     GitHubRequest(
@@ -1412,9 +1415,10 @@ sub CheckPullRequest_StartBuild {
             unless ($d->{build_number}) {
                 # If no job has been created and we don't have a build number
                 # we might have started a build and failed a status update.
-                # Extract build number if so and just do status update.
+                # Extract build number if so and just do status update unless
+                # #newbuild has been issued.
                 
-                if ($d->{job}->{$d->{build_job}}->{data}->{lastBuild}) {
+                if ($d->{job}->{$d->{build_job}}->{data}->{lastBuild} and !$d->{new_build}) {
                     $d->{build_number} = $d->{job}->{$d->{build_job}}->{data}->{lastBuild}->{number};
                     $d->{force_status_update} = 1;
                     $d->{build} = 0;
