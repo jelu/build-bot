@@ -42,6 +42,7 @@ my %CFG = (
     CHECK_JENKINS_INTERVAL => 30,
 
     TRY_DELETE_JOB => 10,
+    CLEANUP_JOB_PATTERN => undef,
 
     REVIEWER => {
     },
@@ -57,6 +58,7 @@ my %CFG = (
     },
     GITHUB_CACHE_EXPIRE => 7200,
 
+    JENKINS_URL_BASE => 'https://jenkins.opendnssec.org/',
     # JENKINS_USERNAME
     # JENKINS_TOKEN
     JENKINS_JOBS => {
@@ -310,11 +312,13 @@ GITHUB_CACHE_EXPIRE))
     foreach my $required (qw(
 GITHUB_USERNAME
 GITHUB_TOKEN
+JENKINS_URL_BASE
 JENKINS_USERNAME
 JENKINS_TOKEN
 OPERATION_START
 OPERATION_END
-TEMPLATE_PATH))
+TEMPLATE_PATH
+CLEANUP_JOB_PATTERN))
     {
         unless (defined $CFG{$required} and $CFG{$required}) {
             confess 'Missing or empty required configuration '.$required;
@@ -561,7 +565,7 @@ sub JenkinsRequest {
     my $method = delete $args{method} || 'GET';
     my $no_json = delete $args{no_json};
     
-    $url =~ s/^https:\/\/jenkins.opendnssec.org\///o;
+    $url =~ s/^$CFG{JENKINS_URL_BASE}//;
     unless ($url =~ /\?/o) {
         $url =~ s/\/+$//o;
         $url .= '/api/json';
@@ -569,8 +573,8 @@ sub JenkinsRequest {
     $args{headers}->{'User-Agent'} = 'curl/7.32.0';
     $args{headers}->{Authorization} = 'Basic '.MIME::Base64::encode($CFG{JENKINS_USERNAME}.':'.$CFG{JENKINS_TOKEN}, '');
     
-    $CFG{LOG_JENKINS_REQUEST} and $logger->debug('JenkinsRequest ', $method, ' https://jenkins.opendnssec.org/'.$url);
-    AnyEvent::HTTP::http_request $method, 'https://jenkins.opendnssec.org/'.$url,
+    $CFG{LOG_JENKINS_REQUEST} and $logger->debug('JenkinsRequest ', $method, ' '.$CFG{JENKINS_URL_BASE}.$url);
+    AnyEvent::HTTP::http_request $method, $CFG{JENKINS_URL_BASE}.$url,
         %args,
         sub {
             my ($body, $header) = @_;
@@ -1790,6 +1794,15 @@ sub CheckJenkins {
             
             $cb->();
         });
+}
+
+#
+# Get all Jenkins jobs on start that match CLEANUP_JOB_PATTERN and check them
+# against GitHub to see if they are closed, if closed set the up to be deleted
+#
+
+sub CleanupJobs {
+    die "Not implemented";
 }
 
 __END__

@@ -4,6 +4,7 @@ CHECK_PULL_REQUEST_INTERVAL: 60
 CHECK_JENKINS_INTERVAL: 60
 
 TRY_DELETE_JOB: 10
+# CLEANUP_JOB_PATTERN:
 
 # Reviewers have access to all repositories and commands
 REVIEWER:
