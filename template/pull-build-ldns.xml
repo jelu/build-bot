@@ -24,12 +24,12 @@
     <hudson.matrix.LabelAxis>
       <name>label</name>
       <values>
-        <string>ubuntu10-ods01</string>
-        <string>freebsd9-ods06</string>
-        <string>suse11-ods05</string>
-        <string>redhat6-ods04</string>
-        <string>freebsd10-ods07</string>
-        <string>ubuntu12-ods02</string>
+        <string>ubuntu10</string>
+        <string>freebsd9</string>
+        <string>suse11</string>
+        <string>redhat6</string>
+        <string>freebsd10</string>
+        <string>ubuntu12</string>
       </values>
     </hudson.matrix.LabelAxis>
   </axes>
