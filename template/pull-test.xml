@@ -49,7 +49,7 @@ GIT_COMMIT=`cat ../.revision` INSTALL_TAG=&quot;pull-@PR@&quot; env bash test-@S
   <buildWrappers>
     <hudson.plugins.build__timeout.BuildTimeoutWrapper plugin="build-timeout@1.12.2">
       <strategy class="hudson.plugins.build_timeout.impl.AbsoluteTimeOutStrategy">
-        <timeoutMinutes>3</timeoutMinutes>
+        <timeoutMinutes>60</timeoutMinutes>
       </strategy>
       <failBuild>false</failBuild>
       <writingDescription>false</writingDescription>
