@@ -40,6 +40,17 @@ GIT_COMMIT=`cat ../.revision` INSTALL_TAG=&quot;pull-@PR@&quot; env bash test-@S
     </hudson.tasks.Shell>
   </builders>
   <publishers>
+@NO_CHILDS_START@
+    <hudson.tasks.BuildTrigger>
+      <childProjects>@CHILDS@</childProjects>
+      <threshold>
+        <name>SUCCESS</name>
+        <ordinal>0</ordinal>
+        <color>BLUE</color>
+        <completeBuild>true</completeBuild>
+      </threshold>
+    </hudson.tasks.BuildTrigger>
+@NO_CHILDS_END@
     <hudson.tasks.junit.JUnitResultArchiver>
       <testResults>junit.xml</testResults>
       <keepLongStdio>false</keepLongStdio>
