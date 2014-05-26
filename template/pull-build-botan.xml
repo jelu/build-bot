@@ -30,6 +30,7 @@
         <string>redhat6</string>
         <string>freebsd10</string>
         <string>ubuntu12</string>
+        <string>ubuntu14</string>
       </values>
     </hudson.matrix.LabelAxis>
   </axes>
