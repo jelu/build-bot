@@ -11,7 +11,7 @@
   <keepDependencies>false</keepDependencies>
   <properties/>
   <scm class="hudson.plugins.cloneworkspace.CloneWorkspaceSCM" plugin="clone-workspace-scm@0.6">
-    <parentJobName>base-softhsm-master</parentJobName>
+    <parentJobName>base-softhsm-develop</parentJobName>
     <criteria>Successful</criteria>
   </scm>
   <canRoam>true</canRoam>
