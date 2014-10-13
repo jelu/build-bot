@@ -1498,7 +1498,8 @@ sub CheckPullRequest_StartBuild {
                                 undef $w;
                             });
                     },
-                    no_json => 1);
+                    no_json => 1,
+                    method => 'POST');
             },
             headers => {
                 'Content-Type' => 'text/xml'
